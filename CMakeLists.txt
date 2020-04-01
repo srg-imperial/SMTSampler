@@ -5,7 +5,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/modules")
 
 include(AddZ3)
 
-add_executable(smt-sampler
-  smtsampler.cpp
-)
-target_link_libraries(smt-sampler PRIVATE z3)
+include_directories("${CMAKE_SOURCE_DIR}/include")
+
+add_subdirectory(lib)
+add_subdirectory(tools)
