@@ -16,7 +16,7 @@ typedef struct {
 
 class SMTSampler {
 public:
-  SMTSampler(std::string input, int max_samples, double max_time, int strategy);
+  SMTSampler(std::string input, unsigned seed, int max_samples, double max_time, int strategy);
   void run();
 
 private:
@@ -53,6 +53,8 @@ private:
 
 private:
   std::string input_file;
+  unsigned random_seed;
+  bool is_seeded;
 
   struct timespec start_time;
   double solver_time = 0.0;
@@ -62,16 +64,16 @@ private:
   int max_samples;
   double max_time;
 
-  z3::context c;
   int strategy;
+  z3::context c;
   bool convert = false;
   bool const flip_internal = false;
   bool random_soft_bit = false;
   z3::apply_result *res0;
   z3::goal *converted_goal;
-  z3::params params;
   z3::optimize opt;
   z3::solver solver;
+  z3::params params;
   z3::model model;
   z3::expr smt_formula;
   std::vector<z3::func_decl> variables;

@@ -20,10 +20,12 @@ std::string bv_string(Z3_ast ast, Z3_context ctx);
 
 namespace smtsampler {
 
-SMTSampler::SMTSampler(std::string input, int max_samples, double max_time,
-                       int strategy)
-    : opt(c), params(c), solver(c), model(c), smt_formula(c), input_file(input),
-      max_samples(max_samples), max_time(max_time), strategy(strategy) {
+SMTSampler::SMTSampler(std::string input, unsigned seed, int max_samples,
+                       double max_time, int strategy)
+    : input_file(input), random_seed(seed), max_samples(max_samples),
+      max_time(max_time), strategy(strategy), opt(c), solver(c), params(c),
+      model(c), smt_formula(c) {
+  is_seeded = random_seed > 0;
   z3::set_param("rewriter.expand_select_store", "true");
   params.set("timeout", 5000u);
   opt.set(params);
@@ -33,7 +35,11 @@ SMTSampler::SMTSampler(std::string input, int max_samples, double max_time,
 
 void SMTSampler::run() {
   clock_gettime(CLOCK_REALTIME, &start_time);
-  srand(start_time.tv_sec);
+  if (is_seeded) {
+    srand(random_seed);
+  } else {
+    srand(start_time.tv_sec);
+  }
   // parse_cnf();
   parse_smt();
   results_file.open(input_file + ".samples");
@@ -259,8 +265,7 @@ z3::expr SMTSampler::evaluate(z3::model m, z3::expr e, bool b, int n) {
   return res;
 }
 
-std::vector<z3::func_decl> SMTSampler::get_variables(z3::model m,
-                                                       bool is_ind) {
+std::vector<z3::func_decl> SMTSampler::get_variables(z3::model m, bool is_ind) {
   std::vector<z3::func_decl> ind;
   std::string str = "variable: ";
   if (is_ind) {
