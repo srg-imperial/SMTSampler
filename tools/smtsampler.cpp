@@ -51,7 +51,11 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  SMTSampler s(argv[argc - 1], seed, max_samples, max_time, strategy);
+  std::string input_file(argv[argc - 1]);
+  std::ofstream results_file;
+  results_file.open(input_file + ".samples");
+  SMTSampler s(std::move(input_file), seed, max_samples, max_time, strategy, results_file);
   s.run();
+  results_file.close();
   return 0;
 }

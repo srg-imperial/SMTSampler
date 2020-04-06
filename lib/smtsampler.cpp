@@ -21,10 +21,10 @@ std::string bv_string(Z3_ast ast, Z3_context ctx);
 namespace smtsampler {
 
 SMTSampler::SMTSampler(std::string input, unsigned seed, int max_samples,
-                       double max_time, int strategy)
+                       double max_time, int strategy, std::ostream &output)
     : input_file(input), random_seed(seed), max_samples(max_samples),
       max_time(max_time), strategy(strategy), opt(c), solver(c), params(c),
-      model(c), smt_formula(c) {
+      model(c), smt_formula(c), results_stream(output){
   is_seeded = random_seed > 0;
   z3::set_param("rewriter.expand_select_store", "true");
   params.set("timeout", 5000u);
@@ -42,7 +42,6 @@ void SMTSampler::run() {
   }
   // parse_cnf();
   parse_smt();
-  results_file.open(input_file + ".samples");
   while (true) {
     opt.push();
     solver.push();
@@ -780,7 +779,7 @@ bool SMTSampler::output(std::string sample, int nmut) {
   if (valid) {
     auto res = all_mutations.insert(sample);
     if (res.second) {
-      results_file << nmut << ": " << sample << '\n';
+      results_stream << nmut << ": " << sample << '\n';
     }
     ++valid_samples;
     clock_gettime(CLOCK_REALTIME, &middle);
@@ -804,7 +803,7 @@ bool SMTSampler::output(std::string sample, int nmut) {
 
 void SMTSampler::finish() {
   print_stats();
-  results_file.close();
+  results_stream.flush();
   exit(0);
 }
 

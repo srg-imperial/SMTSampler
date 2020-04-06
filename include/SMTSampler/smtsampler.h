@@ -16,7 +16,7 @@ typedef struct {
 
 class SMTSampler {
 public:
-  SMTSampler(std::string input, unsigned seed, int max_samples, double max_time, int strategy);
+  SMTSampler(std::string input, unsigned seed, int max_samples, double max_time, int strategy, std::ostream &output);
   void run();
 
 private:
@@ -93,7 +93,7 @@ private:
   int unsat_ind_count = 0;
   int all_ind_count = 0;
 
-  std::ofstream results_file;
+  std::ostream &results_stream;
 
   std::unordered_set<Z3_ast> sub;
   std::unordered_set<Z3_ast> sup;
