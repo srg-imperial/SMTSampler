@@ -20,11 +20,38 @@ std::string bv_string(Z3_ast ast, Z3_context ctx);
 
 namespace smtsampler {
 
+char const *SMTSamplerErrorCategory::name() const noexcept {
+  return "smtsampler";
+}
+
+std::string SMTSamplerErrorCategory::message(int ErrorValue) const {
+  switch (static_cast<SMTSamplerErrc>(ErrorValue)) {
+  case SMTSamplerErrc::InvalidZ3Sort:
+    return "Invalid Z3 sort";
+  case SMTSamplerErrc::InvalidInputFormula:
+    return "Invalid input formula";
+  case SMTSamplerErrc::InvalidHexValue:
+    return "Invalide hexadecimal value";
+  case SMTSamplerErrc::UnsatFormula:
+    return "Unsatisfiable formula";
+  case SMTSamplerErrc::UnableToSolve:
+    return "Solver was unable to solve formula";
+  case SMTSamplerErrc::SolutionCheckFailure:
+    return "Solution does not satisify formula";
+  case SMTSamplerErrc::Finish:
+    return "Finished";
+  default:
+    return "(unrecognized error)";
+  }
+}
+
+SMTSamplerErrorCategory const TheSMTSamplerErrorCategory;
+
 SMTSampler::SMTSampler(std::string input, unsigned seed, int max_samples,
                        double max_time, int strategy, std::ostream &output)
     : input_file(input), random_seed(seed), max_samples(max_samples),
       max_time(max_time), strategy(strategy), opt(c), solver(c), params(c),
-      model(c), smt_formula(c), results_stream(output){
+      model(c), smt_formula(c), results_stream(output) {
   is_seeded = random_seed > 0;
   z3::set_param("rewriter.expand_select_store", "true");
   params.set("timeout", 5000u);

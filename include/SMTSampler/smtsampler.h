@@ -1,10 +1,45 @@
+#include <system_error>
+#include <type_traits>
 #include <z3++.h>
 
+#include <exception>
 #include <fstream>
 #include <map>
+#include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <z3_api.h>
+
+namespace smtsampler {
+
+enum class SMTSamplerErrc {
+  InvalidZ3Sort = 1,
+  InvalidInputFormula,
+  InvalidHexValue,
+  UnsatFormula = 10,
+  UnableToSolve,
+  SolutionCheckFailure,
+  Finish = 20
+};
+
+std::error_code make_error_code(SMTSamplerErrc);
+
+struct SMTSamplerErrorCategory : std::error_category {
+  char const *name() const noexcept override;
+  std::string message(int ErrorValue) const override;
+};
+
+extern SMTSamplerErrorCategory const TheSMTSamplerErrorCategory;
+
+} // namespace smtsampler
+
+namespace std {
+
+template <>
+struct is_error_code_enum<smtsampler::SMTSamplerErrc> : true_type {};
+
+} // namespace std
 
 namespace smtsampler {
 
@@ -14,9 +49,109 @@ typedef struct {
   char const *a[3] = {NULL, NULL, NULL};
 } triple;
 
+struct SMTSamplerException : std::runtime_error {
+  SMTSamplerException() = delete;
+  SMTSamplerException(SMTSamplerException const &) = delete;
+  SMTSamplerException(SMTSamplerException &&) = delete;
+
+  SMTSamplerException(std::error_code TheEC)
+      : std::runtime_error(TheEC.message()), EC(TheEC){};
+  virtual ~SMTSamplerException() = default;
+
+  std::error_code EC;
+};
+
+struct InvalidZ3SortException : SMTSamplerException {
+  InvalidZ3SortException(InvalidZ3SortException const &) = delete;
+  InvalidZ3SortException(InvalidZ3SortException &&) = delete;
+  InvalidZ3SortException(Z3_context const TheCtx, Z3_sort const TheSort)
+    : SMTSamplerException(make_error_code(SMTSamplerErrc::InvalidZ3Sort)) {
+    WhatString = EC.message();
+    WhatString += ": ";
+    WhatString.append(Z3_get_symbol_string(TheCtx, Z3_get_sort_name(TheCtx, TheSort)));
+  }
+
+  virtual char const *what() const noexcept override {
+    return WhatString.c_str();
+  }
+
+private:
+  std::string WhatString;
+};
+
+struct InvalidInputFormulaException : SMTSamplerException {
+  InvalidInputFormulaException(InvalidInputFormulaException const &) = delete;
+  InvalidInputFormulaException(InvalidInputFormulaException &&) = delete;
+  InvalidInputFormulaException()
+      : SMTSamplerException(
+            make_error_code(SMTSamplerErrc::InvalidInputFormula)) {}
+};
+
+struct InvalidHexValueException : SMTSamplerException {
+  InvalidHexValueException() = delete;
+  InvalidHexValueException(InvalidHexValueException const &) = delete;
+  InvalidHexValueException(InvalidHexValueException &&) = delete;
+
+  explicit InvalidHexValueException(char const c)
+    : SMTSamplerException(make_error_code(SMTSamplerErrc::InvalidHexValue)) {
+    WhatString =EC.message();
+    WhatString += ": ";
+    WhatString += c;
+  }
+
+  virtual char const *what() const noexcept override {
+    return WhatString.c_str();
+  }
+
+private:
+  std::string WhatString;
+};
+
+struct UnsatFormulaException : SMTSamplerException {
+  UnsatFormulaException(UnsatFormulaException const &) = delete;
+  UnsatFormulaException(UnsatFormulaException &&) = delete;
+  UnsatFormulaException()
+      : SMTSamplerException(make_error_code(SMTSamplerErrc::UnsatFormula)) {}
+};
+
+struct UnableToSolveException : SMTSamplerException {
+  UnableToSolveException(UnableToSolveException const &) = delete;
+  UnableToSolveException(UnableToSolveException &&) = delete;
+  UnableToSolveException()
+      : SMTSamplerException(make_error_code(SMTSamplerErrc::UnableToSolve)) {}
+};
+
+struct SolutionCheckFailureException : SMTSamplerException {
+  SolutionCheckFailureException() = delete;
+  SolutionCheckFailureException(InvalidHexValueException const &) = delete;
+  SolutionCheckFailureException(InvalidHexValueException &&) = delete;
+
+  explicit SolutionCheckFailureException(int const TheMutationIndex)
+      : SMTSamplerException(make_error_code(SMTSamplerErrc::SolutionCheckFailure)) {
+    WhatString = EC.message();
+    WhatString += ": ";
+    WhatString += std::to_string(TheMutationIndex);
+  }
+
+  virtual char const *what() const noexcept override {
+    return WhatString.c_str();
+  }
+
+private:
+  std::string WhatString;
+};
+
+struct FinishException : SMTSamplerException {
+  FinishException(FinishException const &) = delete;
+  FinishException(FinishException &&) = delete;
+  FinishException()
+      : SMTSamplerException(make_error_code(SMTSamplerErrc::Finish)) {}
+};
+
 class SMTSampler {
 public:
-  SMTSampler(std::string input, unsigned seed, int max_samples, double max_time, int strategy, std::ostream &output);
+  SMTSampler(std::string input, unsigned seed, int max_samples, double max_time,
+             int strategy, std::ostream &output);
   void run();
 
 private:
@@ -48,7 +183,7 @@ private:
   void finish();
   z3::check_result solve();
   std::string model_string(z3::model m, std::vector<z3::func_decl> ind);
-  double duration(struct timespec * a, struct timespec * b);
+  double duration(struct timespec *a, struct timespec *b);
   z3::expr literal(int v);
 
 private:
