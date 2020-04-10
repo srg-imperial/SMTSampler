@@ -31,7 +31,7 @@ std::string SMTSamplerErrorCategory::message(int ErrorValue) const {
   case SMTSamplerErrc::InvalidInputFormula:
     return "Invalid input formula";
   case SMTSamplerErrc::InvalidHexValue:
-    return "Invalide hexadecimal value";
+    return "Invalid hexadecimal value";
   case SMTSamplerErrc::UnsatFormula:
     return "Unsatisfiable formula";
   case SMTSamplerErrc::UnableToSolve:
@@ -45,7 +45,11 @@ std::string SMTSamplerErrorCategory::message(int ErrorValue) const {
   }
 }
 
-SMTSamplerErrorCategory const TheSMTSamplerErrorCategory;
+std::error_code make_error_code(SMTSamplerErrc Value) {
+  return std::error_code(static_cast<int>(Value), SMTSamplerErrorCategory());
+}
+
+struct SMTSamplerErrorCategory const TheSMTSamplerErrorCategory;
 
 SMTSampler::SMTSampler(std::string input, unsigned seed, int max_samples,
                        double max_time, int strategy, std::ostream &output)
@@ -111,8 +115,7 @@ void SMTSampler::run() {
           assert_soft(!v());
         break;
       default:
-        std::cout << "Invalid sort\n";
-        exit(1);
+        throw InvalidZ3SortException(v.range());
       }
     }
     z3::check_result result = solve();
@@ -179,8 +182,7 @@ void SMTSampler::visit(z3::expr e, int depth = 0) {
           ++num_bits;
           break;
         default:
-          std::cout << "Invalid sort\n";
-          exit(1);
+          throw InvalidZ3SortException(fd.range());
         }
       }
     }
@@ -207,8 +209,7 @@ void SMTSampler::parse_smt() {
   z3::expr formula = c.parse_file(input_file.c_str());
   Z3_ast ast = formula;
   if (ast == NULL) {
-    std::cout << "Could not read input formula.\n";
-    exit(1);
+    throw InvalidInputFormulaException();
   }
   smt_formula = formula;
   if (convert) {
@@ -241,11 +242,9 @@ void SMTSampler::parse_smt() {
       std::cout << "Exception: " << except << "\n";
     }
     if (result == z3::unsat) {
-      std::cout << "Formula is unsat\n";
-      exit(0);
+      throw UnsatFormulaException();
     } else if (result == z3::unknown) {
-      std::cout << "Solver returned unknown\n";
-      exit(0);
+      throw UnableToSolveException();
     }
     z3::model m = s.get_model();
     ind = get_variables(m, true);
@@ -259,11 +258,9 @@ void SMTSampler::parse_smt() {
     solver.add(formula);
     z3::check_result result = solve();
     if (result == z3::unsat) {
-      std::cout << "Formula is unsat\n";
-      exit(0);
+      throw UnsatFormulaException();
     } else if (result == z3::unknown) {
-      std::cout << "Solver could not solve\n";
-      exit(0);
+      throw UnableToSolveException();
     }
     evaluate(model, smt_formula, true, 1);
   }
@@ -356,8 +353,7 @@ z3::expr SMTSampler::value(char const *n, z3::sort s) {
   case Z3_BOOL_SORT:
     return c.bool_val(atoi(n) == 1);
   default:
-    std::cout << "Invalid sort\n";
-    exit(1);
+    throw InvalidZ3SortException(s);
   }
 }
 
@@ -812,9 +808,7 @@ bool SMTSampler::output(std::string sample, int nmut) {
     clock_gettime(CLOCK_REALTIME, &middle);
     evaluate(m, smt_formula, true, 2);
   } else if (nmut <= 1) {
-    std::cout << "Solution check failed, nmut = " << nmut << "\n";
-    std::cout << b << "\n";
-    exit(0);
+    throw SolutionCheckFailureException(nmut);
   }
 
   struct timespec end;
@@ -831,7 +825,7 @@ bool SMTSampler::output(std::string sample, int nmut) {
 void SMTSampler::finish() {
   print_stats();
   results_stream.flush();
-  exit(0);
+  throw FinishException();
 }
 
 z3::check_result SMTSampler::solve() {
@@ -851,6 +845,7 @@ z3::check_result SMTSampler::solve() {
     result = opt.check();
   } catch (z3::exception except) {
     std::cout << "Exception: " << except << "\n";
+    throw;
   }
   if (result == z3::sat) {
     model = opt.get_model();
@@ -859,6 +854,7 @@ z3::check_result SMTSampler::solve() {
       result = solver.check();
     } catch (z3::exception except) {
       std::cout << "Exception: " << except << "\n";
+      throw;
     }
     std::cout << "MAX-SMT timed out: " << result << "\n";
     if (result == z3::sat) {
@@ -939,8 +935,7 @@ std::string SMTSampler::model_string(z3::model m,
         break;
       }
       default:
-        std::cout << "Invalid sort\n";
-        exit(1);
+        throw InvalidZ3SortException(v.range());
       }
     } else {
       z3::func_interp f = m.get_func_interp(v);

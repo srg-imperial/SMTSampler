@@ -55,6 +55,5 @@ int main(int argc, char *argv[]) {
   std::ofstream results_file(input_file + ".samples");
   SMTSampler s(std::move(input_file), seed, max_samples, max_time, strategy, results_file);
   s.run();
-  results_file.close();
   return 0;
 }

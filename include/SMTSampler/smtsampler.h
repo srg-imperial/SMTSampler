@@ -6,6 +6,7 @@
 #include <fstream>
 #include <map>
 #include <stdexcept>
+#include <system_error>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -30,7 +31,11 @@ struct SMTSamplerErrorCategory : std::error_category {
   std::string message(int ErrorValue) const override;
 };
 
-extern SMTSamplerErrorCategory const TheSMTSamplerErrorCategory;
+extern struct SMTSamplerErrorCategory const TheSMTSamplerErrorCategory;
+
+std::error_category const &SMTSamplerErrorCategory() {
+  return TheSMTSamplerErrorCategory;
+}
 
 } // namespace smtsampler
 
@@ -50,11 +55,7 @@ typedef struct {
 } triple;
 
 struct SMTSamplerException : std::runtime_error {
-  SMTSamplerException() = delete;
-  SMTSamplerException(SMTSamplerException const &) = delete;
-  SMTSamplerException(SMTSamplerException &&) = delete;
-
-  SMTSamplerException(std::error_code TheEC)
+  explicit SMTSamplerException(std::error_code TheEC)
       : std::runtime_error(TheEC.message()), EC(TheEC){};
   virtual ~SMTSamplerException() = default;
 
@@ -62,13 +63,11 @@ struct SMTSamplerException : std::runtime_error {
 };
 
 struct InvalidZ3SortException : SMTSamplerException {
-  InvalidZ3SortException(InvalidZ3SortException const &) = delete;
-  InvalidZ3SortException(InvalidZ3SortException &&) = delete;
-  InvalidZ3SortException(Z3_context const TheCtx, Z3_sort const TheSort)
-    : SMTSamplerException(make_error_code(SMTSamplerErrc::InvalidZ3Sort)) {
+  InvalidZ3SortException(z3::sort const TheSort)
+      : SMTSamplerException(make_error_code(SMTSamplerErrc::InvalidZ3Sort)) {
     WhatString = EC.message();
     WhatString += ": ";
-    WhatString.append(Z3_get_symbol_string(TheCtx, Z3_get_sort_name(TheCtx, TheSort)));
+    WhatString += TheSort.to_string();
   }
 
   virtual char const *what() const noexcept override {
@@ -80,21 +79,15 @@ private:
 };
 
 struct InvalidInputFormulaException : SMTSamplerException {
-  InvalidInputFormulaException(InvalidInputFormulaException const &) = delete;
-  InvalidInputFormulaException(InvalidInputFormulaException &&) = delete;
   InvalidInputFormulaException()
       : SMTSamplerException(
             make_error_code(SMTSamplerErrc::InvalidInputFormula)) {}
 };
 
 struct InvalidHexValueException : SMTSamplerException {
-  InvalidHexValueException() = delete;
-  InvalidHexValueException(InvalidHexValueException const &) = delete;
-  InvalidHexValueException(InvalidHexValueException &&) = delete;
-
   explicit InvalidHexValueException(char const c)
-    : SMTSamplerException(make_error_code(SMTSamplerErrc::InvalidHexValue)) {
-    WhatString =EC.message();
+      : SMTSamplerException(make_error_code(SMTSamplerErrc::InvalidHexValue)) {
+    WhatString = EC.message();
     WhatString += ": ";
     WhatString += c;
   }
@@ -108,26 +101,19 @@ private:
 };
 
 struct UnsatFormulaException : SMTSamplerException {
-  UnsatFormulaException(UnsatFormulaException const &) = delete;
-  UnsatFormulaException(UnsatFormulaException &&) = delete;
   UnsatFormulaException()
       : SMTSamplerException(make_error_code(SMTSamplerErrc::UnsatFormula)) {}
 };
 
 struct UnableToSolveException : SMTSamplerException {
-  UnableToSolveException(UnableToSolveException const &) = delete;
-  UnableToSolveException(UnableToSolveException &&) = delete;
   UnableToSolveException()
       : SMTSamplerException(make_error_code(SMTSamplerErrc::UnableToSolve)) {}
 };
 
 struct SolutionCheckFailureException : SMTSamplerException {
-  SolutionCheckFailureException() = delete;
-  SolutionCheckFailureException(InvalidHexValueException const &) = delete;
-  SolutionCheckFailureException(InvalidHexValueException &&) = delete;
-
   explicit SolutionCheckFailureException(int const TheMutationIndex)
-      : SMTSamplerException(make_error_code(SMTSamplerErrc::SolutionCheckFailure)) {
+      : SMTSamplerException(
+            make_error_code(SMTSamplerErrc::SolutionCheckFailure)) {
     WhatString = EC.message();
     WhatString += ": ";
     WhatString += std::to_string(TheMutationIndex);
@@ -142,8 +128,6 @@ private:
 };
 
 struct FinishException : SMTSamplerException {
-  FinishException(FinishException const &) = delete;
-  FinishException(FinishException &&) = delete;
   FinishException()
       : SMTSamplerException(make_error_code(SMTSamplerErrc::Finish)) {}
 };
