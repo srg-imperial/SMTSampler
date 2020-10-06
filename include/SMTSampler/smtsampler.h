@@ -134,7 +134,7 @@ struct FinishException : SMTSamplerException {
 
 class SMTSampler {
 public:
-  SMTSampler(std::string input, unsigned seed, int max_samples, double max_time,
+  SMTSampler(std::string input, std::string array_map, unsigned seed, int max_samples, double max_time,
              int strategy, std::ostream &output);
   void run();
 
@@ -161,17 +161,23 @@ private:
                         size_t &pos_c, int arity, z3::sort s,
                         std::string &candidate);
   bool is_ind(int count);
-  z3::model gen_model(std::string candidate, std::vector<z3::func_decl> ind);
+  z3::model gen_model(std::string const &candidate,
+                      std::vector<z3::func_decl> ind);
   bool output(z3::model m, int nmut);
   bool output(std::string sample, int nmut);
   void finish();
   z3::check_result solve();
-  std::string model_string(z3::model m, std::vector<z3::func_decl> ind);
+  std::string model_string(z3::model const &m,
+                           std::vector<z3::func_decl> const &ind);
+  std::string
+  output_sample_string(std::string const &TheSample,
+                       std::vector<z3::func_decl> const &TheVariables);
   double duration(struct timespec *a, struct timespec *b);
   z3::expr literal(int v);
 
 private:
   std::string input_file;
+  std::string array_map_file;
   unsigned random_seed;
   bool is_seeded;
 
@@ -200,6 +206,7 @@ private:
   std::vector<z3::expr> internal;
   std::vector<z3::expr> constraints;
   std::vector<std::vector<z3::expr>> soft_constraints;
+  std::unordered_map<std::string, size_t> array_map;
   std::vector<std::pair<int, int>> cons_to_ind;
   std::unordered_map<int, std::unordered_set<int>> unsat_ind;
   std::unordered_set<int> unsat_internal;

@@ -4,6 +4,7 @@
 #include <fstream>
 #include <map>
 #include <string.h>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -51,11 +52,13 @@ std::error_code make_error_code(SMTSamplerErrc Value) {
 
 struct SMTSamplerErrorCategory const TheSMTSamplerErrorCategory;
 
-SMTSampler::SMTSampler(std::string input, unsigned seed, int max_samples,
-                       double max_time, int strategy, std::ostream &output)
-    : input_file(input), random_seed(seed), max_samples(max_samples),
-      max_time(max_time), strategy(strategy), opt(c), solver(c), params(c),
-      model(c), smt_formula(c), results_stream(output) {
+SMTSampler::SMTSampler(std::string input, std::string array_map, unsigned seed,
+                       int max_samples, double max_time, int strategy,
+                       std::ostream &output)
+    : input_file(std::move(input)), array_map_file(std::move(array_map)),
+      random_seed(seed), max_samples(max_samples), max_time(max_time),
+      strategy(strategy), opt(c), solver(c), params(c), model(c),
+      smt_formula(c), results_stream(output) {
   is_seeded = random_seed > 0;
   z3::set_param("rewriter.expand_select_store", "true");
   params.set("timeout", 5000u);
@@ -77,8 +80,30 @@ void SMTSampler::run() {
     opt.push();
     solver.push();
     for (z3::func_decl &v : ind) {
-      if (v.arity() > 0 || v.range().is_array())
+      if (v.arity() > 0 || v.range().is_array()) {
+        size_t array_size = array_map.at(v.name().str());
+        unsigned cell_size = v.range().array_range().bv_size();
+        // Assign random values to the array elems
+        for (size_t i = 0; i < array_size; ++i) {
+          std::string n;
+          char num[10];
+          int j = cell_size;
+          if (j % 4) {
+            snprintf(num, 10, "%x", rand() & ((1 << (j % 4)) - 1));
+            n += num;
+            j -= (j % 4);
+          }
+          while (j) {
+            snprintf(num, 10, "%x", rand() & 15);
+            n += num;
+            j -= 4;
+          }
+          Z3_ast ast = parse_bv(n.c_str(), v.range().array_range(), c);
+          z3::expr exp(c, ast);
+          assert_soft(z3::select(v(), i) == exp);
+        }
         continue;
+      }
       switch (v.range().sort_kind()) {
       case Z3_BV_SORT: {
         if (random_soft_bit) {
@@ -207,6 +232,17 @@ void SMTSampler::visit(z3::expr e, int depth = 0) {
 
 void SMTSampler::parse_smt() {
   z3::expr formula = c.parse_file(input_file.c_str());
+
+  // read in the sizes of the arrays
+  if (!array_map_file.empty()) {
+    std::ifstream array_map_stream(array_map_file);
+    while (!array_map_stream.eof()) {
+      std::string array_name;
+      array_map_stream >> array_name;
+      array_map_stream >> array_map[array_name];
+    }
+  }
+
   Z3_ast ast = formula;
   if (ast == NULL) {
     throw InvalidInputFormulaException();
@@ -697,7 +733,7 @@ bool SMTSampler::is_ind(int count) {
   return !flip_internal || count >= internal.size();
 }
 
-z3::model SMTSampler::gen_model(std::string candidate,
+z3::model SMTSampler::gen_model(std::string const &candidate,
                                 std::vector<z3::func_decl> ind) {
   z3::model m(c);
   size_t pos = 0;
@@ -802,7 +838,8 @@ bool SMTSampler::output(std::string sample, int nmut) {
   if (valid) {
     auto res = all_mutations.insert(sample);
     if (res.second) {
-      results_stream << nmut << ": " << sample << '\n';
+      results_stream << nmut << ": " << output_sample_string(sample, ind)
+                     << '\n';
     }
     ++valid_samples;
     clock_gettime(CLOCK_REALTIME, &middle);
@@ -869,10 +906,10 @@ z3::check_result SMTSampler::solve() {
   return result;
 }
 
-std::string SMTSampler::model_string(z3::model m,
-                                     std::vector<z3::func_decl> ind) {
+std::string SMTSampler::model_string(z3::model const &m,
+                                     std::vector<z3::func_decl> const &ind) {
   std::string s;
-  for (z3::func_decl &v : ind) {
+  for (z3::func_decl const &v : ind) {
     if (v.range().is_array()) {
       z3::expr e = m.get_const_interp(v);
       Z3_func_decl as_array = Z3_get_as_array_func_decl(c, e);
@@ -956,6 +993,30 @@ std::string SMTSampler::model_string(z3::model m,
     }
   }
   return s;
+}
+
+std::string SMTSampler::output_sample_string(
+    std::string const &TheSample,
+    std::vector<z3::func_decl> const &TheVariables) {
+  std::string SampleString;
+  SampleString += "[";
+  for (z3::func_decl const &Var : TheVariables) {
+    SampleString += Var.name().str();
+    SampleString += '\0';
+    if (Var.range().is_array()) {
+      SampleString += '1';
+      SampleString += '\0';
+    } else if (Var.is_const()) {
+      SampleString += '2';
+      SampleString += '\0';
+    } else {
+      SampleString += '3';
+      SampleString += '\0';
+    }
+  }
+  SampleString += "]";
+  SampleString += TheSample;
+  return SampleString;
 }
 
 double SMTSampler::duration(struct timespec *a, struct timespec *b) {
