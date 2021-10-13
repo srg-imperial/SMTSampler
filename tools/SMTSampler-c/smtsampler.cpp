@@ -6,13 +6,15 @@
 
 using namespace smtsampler;
 
-int smtsampler_run(const char *input, unsigned seed, int max_samples, double max_time,
-        int strategy, const char *output) {
+int smtsampler_run(const char *input, unsigned seed, int max_samples,
+                   double max_time, int strategy, unsigned soft_arr_idx,
+                   const char *output) {
   int retval = 0;
 
   std::string input_file(input);
   std::ofstream results_file(output);
-  SMTSampler s(std::move(input_file), std::string(), seed, max_samples, max_time, strategy, results_file);
+  SMTSampler s(std::move(input_file), std::string(), seed, max_samples,
+               max_time, soft_arr_idx, strategy, results_file);
   try {
     s.run();
   } catch(FinishException e) {

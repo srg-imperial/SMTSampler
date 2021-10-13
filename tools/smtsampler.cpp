@@ -13,6 +13,7 @@ int main(int argc, char *argv[]) {
   double max_time = 3600.0;
   int strategy = STRAT_SMTBIT;
   unsigned seed = 0;
+  unsigned soft_arr_idx = 0;
   if (argc < 2) {
     std::cout << "Argument required: input file\n";
     return 0;
@@ -22,6 +23,7 @@ int main(int argc, char *argv[]) {
   bool seeded = false;
   bool arg_results = false;
   bool array_map = false;
+  bool soft_arr = false;
   std::string results_path;
   std::string array_map_path;
   for (int i = 1; i < argc; ++i) {
@@ -41,6 +43,8 @@ int main(int argc, char *argv[]) {
       strategy = STRAT_SAT;
     else if (std::strcmp(argv[i], "--seed") == 0)
       seeded = true;
+    else if (std::strcmp(argv[i], "--soft-arr") == 0)
+      soft_arr = true;
     else if (array_map) {
       array_map = false;
       array_map_path = argv[i];
@@ -50,7 +54,7 @@ int main(int argc, char *argv[]) {
     } else if (arg_time) {
       arg_time = false;
       max_time = std::atof(argv[i]);
-    } else if(arg_results) {
+    } else if (arg_results) {
       arg_results = false;
       results_path = argv[i];
     } else if (seeded) {
@@ -60,7 +64,14 @@ int main(int argc, char *argv[]) {
       if (seed == 0 || seed != seed_value)
         throw std::out_of_range(
             (seed == 0) ? "Cannot use 0 as a seed value"
-                        : "Provided seed does not for within an unsigned int");
+                        : "Provided seed does not fit within an unsigned int");
+    } else if (soft_arr) {
+      soft_arr = false;
+      unsigned long soft_arr_idx_value = std::strtoul(argv[i], nullptr, 10);
+      soft_arr_idx = soft_arr_idx_value;
+      if (soft_arr_idx != soft_arr_idx_value)
+        throw std::out_of_range(
+            "Provided soft_arr_idx does fit within an unsigned int");
     }
   }
 
@@ -68,7 +79,8 @@ int main(int argc, char *argv[]) {
   if (results_path.empty())
     results_path = input_file + ".samples";
   std::ofstream results_file(results_path);
-  SMTSampler s(std::move(input_file), std::move(array_map_path), seed, max_samples, max_time, strategy, results_file);
+  SMTSampler s(std::move(input_file), std::move(array_map_path), seed,
+               max_samples, max_time, strategy, soft_arr_idx, results_file);
   try {
   s.run();
   } catch(FinishException e) {}

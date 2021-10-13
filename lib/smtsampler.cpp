@@ -54,14 +54,14 @@ struct SMTSamplerErrorCategory const TheSMTSamplerErrorCategory;
 
 SMTSampler::SMTSampler(std::string input, std::string array_map, unsigned seed,
                        int max_samples, double max_time, int strategy,
-                       std::ostream &output)
+                       unsigned soft_arr_idx, std::ostream &output)
     : input_file(std::move(input)), array_map_file(std::move(array_map)),
       random_seed(seed), max_samples(max_samples), max_time(max_time),
-      strategy(strategy), opt(c), solver(c), params(c), model(c),
-      smt_formula(c), results_stream(output) {
+      strategy(strategy), random_soft_arr_idx(soft_arr_idx), opt(c), solver(c),
+      params(c), model(c), smt_formula(c), results_stream(output) {
   is_seeded = random_seed > 0;
   z3::set_param("rewriter.expand_select_store", "true");
-  params.set("timeout", 5000u);
+  params.set("timeout", static_cast<unsigned>(max_time + 0.5) * 1000);
   opt.set(params);
   solver.set(params);
   convert = strategy == STRAT_SAT;
@@ -81,26 +81,50 @@ void SMTSampler::run() {
     solver.push();
     for (z3::func_decl &v : ind) {
       if (v.arity() > 0 || v.range().is_array()) {
-        size_t array_size = array_map.at(v.name().str());
+        size_t array_size = 0;
+        bool is_input = false;
+        try {
+          auto const &array_info = array_map.at(v.name().str());
+          array_size = array_info.first;
+          is_input = array_info.second;
+        } catch (const std::out_of_range &e) {
+          continue;
+        }
+
+        // We only want to generate soft constraints on input array variables
+        if (!is_input)
+          continue;
+
         unsigned cell_size = v.range().array_range().bv_size();
+        unsigned selection_counter = 0;
         // Assign random values to the array elems
         for (size_t i = 0; i < array_size; ++i) {
-          std::string n;
-          char num[10];
-          int j = cell_size;
-          if (j % 4) {
-            snprintf(num, 10, "%x", rand() & ((1 << (j % 4)) - 1));
-            n += num;
-            j -= (j % 4);
+          // If random_soft_arr_idx is 0 (feature disabled) then all arrays will
+          // be marked as big arrays and the selection counter will stay 0 so we
+          // will always take the true branch of this if-else statement. If the
+          // feature is enabled this will just operate on large enough arrays
+          // using the selection counter as a guide for when to add a soft
+          // constraint.
+          if ((random_soft_arr_idx == 0) || (random_soft_arr_idx > (selection_counter % 100))) {
+            std::string n;
+            char num[10];
+            int j = cell_size;
+            if (j % 4) {
+              snprintf(num, 10, "%x", rand() & ((1 << (j % 4)) - 1));
+              n += num;
+              j -= (j % 4);
+            }
+            while (j) {
+              snprintf(num, 10, "%x", rand() & 15);
+              n += num;
+              j -= 4;
+            }
+            Z3_ast ast = parse_bv(n.c_str(), v.range().array_range(), c);
+            z3::expr exp(c, ast);
+            assert_soft(z3::select(v(), i) == exp);
+          } else {
           }
-          while (j) {
-            snprintf(num, 10, "%x", rand() & 15);
-            n += num;
-            j -= 4;
-          }
-          Z3_ast ast = parse_bv(n.c_str(), v.range().array_range(), c);
-          z3::expr exp(c, ast);
-          assert_soft(z3::select(v(), i) == exp);
+          ++selection_counter;
         }
         continue;
       }
@@ -238,8 +262,12 @@ void SMTSampler::parse_smt() {
     std::ifstream array_map_stream(array_map_file);
     while (!array_map_stream.eof()) {
       std::string array_name;
+      size_t array_size;
+      bool is_input;
       array_map_stream >> array_name;
-      array_map_stream >> array_map[array_name];
+      array_map_stream >> array_size;
+      array_map_stream >> is_input;
+      array_map[array_name] = {array_size, is_input};
     }
   }
 
@@ -250,16 +278,16 @@ void SMTSampler::parse_smt() {
   smt_formula = formula;
   if (convert) {
     z3::tactic simplify(c, "simplify");
-    z3::tactic bvarray2uf(c, "bvarray2uf");
+    // z3::tactic bvarray2uf(c, "bvarray2uf");
     z3::tactic ackermannize_bv(c, "ackermannize_bv");
     z3::tactic bit_blast(c, "bit-blast");
-    z3::tactic t = simplify & bvarray2uf & ackermannize_bv & bit_blast;
+    z3::tactic t = simplify & ackermannize_bv & bit_blast;
     z3::goal g(c);
     g.add(formula);
 
     struct timespec start;
     clock_gettime(CLOCK_REALTIME, &start);
-    z3::apply_result res = t(g);
+    res0 = new z3::apply_result(t(g));
     struct timespec end;
     clock_gettime(CLOCK_REALTIME, &end);
     convert_time += duration(&start, &end);

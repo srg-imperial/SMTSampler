@@ -9,6 +9,7 @@
 #include <system_error>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 #include <z3_api.h>
 
@@ -134,8 +135,9 @@ struct FinishException : SMTSamplerException {
 
 class SMTSampler {
 public:
-  SMTSampler(std::string input, std::string array_map, unsigned seed, int max_samples, double max_time,
-             int strategy, std::ostream &output);
+  SMTSampler(std::string input, std::string array_map, unsigned seed,
+             int max_samples, double max_time, int strategy,
+             unsigned soft_arr_idx, std::ostream &output);
   void run();
 
 private:
@@ -191,9 +193,10 @@ private:
 
   int strategy;
   z3::context c;
-  bool convert = false;
+  bool convert = true;
   bool const flip_internal = false;
-  bool random_soft_bit = false;
+  bool random_soft_bit = true;
+  unsigned random_soft_arr_idx;
   z3::apply_result *res0;
   z3::goal *converted_goal;
   z3::optimize opt;
@@ -206,7 +209,7 @@ private:
   std::vector<z3::expr> internal;
   std::vector<z3::expr> constraints;
   std::vector<std::vector<z3::expr>> soft_constraints;
-  std::unordered_map<std::string, size_t> array_map;
+  std::unordered_map<std::string, std::pair<size_t, bool>> array_map;
   std::vector<std::pair<int, int>> cons_to_ind;
   std::unordered_map<int, std::unordered_set<int>> unsat_ind;
   std::unordered_set<int> unsat_internal;
