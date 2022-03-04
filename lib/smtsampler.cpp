@@ -56,10 +56,10 @@ SMTSampler::SMTSampler(std::string input, std::string array_map, unsigned seed,
                        int max_samples, double max_time, int strategy,
                        unsigned soft_arr_idx, std::ostream &output)
     : input_file(std::move(input)), array_map_file(std::move(array_map)),
-      random_seed(seed), max_samples(max_samples), max_time(max_time),
+      input_seed(seed), final_seed(0), max_samples(max_samples), max_time(max_time),
       strategy(strategy), random_soft_arr_idx(soft_arr_idx), opt(c), solver(c),
       params(c), model(c), smt_formula(c), results_stream(output) {
-  is_seeded = random_seed > 0;
+  is_seeded = input_seed > 0;
   z3::set_param("rewriter.expand_select_store", "true");
   params.set("timeout", static_cast<unsigned>(max_time + 0.5) * 1000);
   opt.set(params);
@@ -69,11 +69,10 @@ SMTSampler::SMTSampler(std::string input, std::string array_map, unsigned seed,
 
 void SMTSampler::run() {
   clock_gettime(CLOCK_REALTIME, &start_time);
-  if (is_seeded) {
-    srand(random_seed);
-  } else {
-    srand(start_time.tv_sec);
-  }
+
+  final_seed = is_seeded ? input_seed : (unsigned)start_time.tv_sec;
+  srand(final_seed);
+
   // parse_cnf();
   parse_smt();
   while (true) {
@@ -189,6 +188,10 @@ void SMTSampler::print_stats() {
   struct timespec end;
   clock_gettime(CLOCK_REALTIME, &end);
   double elapsed = duration(&start_time, &end);
+  if (is_seeded){
+    std::cout << "Input seed: " << input_seed << "\n";
+  }
+  std::cout << "Final seed: " << final_seed << "\n";
   std::cout << "Samples " << samples << '\n';
   std::cout << "Valid samples " << valid_samples << '\n';
   std::cout << "Unique valid samples " << all_mutations.size() << '\n';

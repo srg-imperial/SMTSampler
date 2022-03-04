@@ -180,7 +180,8 @@ private:
 private:
   std::string input_file;
   std::string array_map_file;
-  unsigned random_seed;
+  unsigned input_seed;
+  unsigned final_seed;
   bool is_seeded;
 
   struct timespec start_time;
